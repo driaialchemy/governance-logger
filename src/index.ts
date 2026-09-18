@@ -6,6 +6,8 @@ export {
   LoggerConfig,
   LoggerResponse,
   ActivityType,
+  PolicyMatched,
+  buildWebhookPayload,
 } from './types';
 export { getConfig, validateConfig, logDebug } from './config';
 export { retryWithBackoff, calculateBackoffDelay } from './retry';

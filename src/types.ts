@@ -1,5 +1,8 @@
 // types.ts - TypeScript interfaces for the governance logger
 
+/** Canonical: policy id or name. See docs/decision-lineage-schema.md. */
+export type PolicyMatched = string;
+
 export interface GovernanceActivity {
   agentId: string;              // e.g., "workeragentcowork"
   versionId?: string;           // e.g., "1.2.3"
@@ -17,6 +20,18 @@ export interface GovernanceActivity {
     error?: string;
     output?: any;
     data?: any;
+  };
+  reasoning_path?: string[] | null;
+  policy_matched?: PolicyMatched | null;
+  confidence?: number | null;
+}
+
+export function buildWebhookPayload(activity: GovernanceActivity): GovernanceActivity {
+  return {
+    ...activity,
+    reasoning_path: activity.reasoning_path ?? null,
+    policy_matched: activity.policy_matched ?? null,
+    confidence: activity.confidence ?? null,
   };
 }
 
@@ -44,4 +59,9 @@ export interface LoggerResponse {
   error?: string;
   timestamp: string;
   attempt: number;
+  // Blocking harness fields (from governor)
+  allowed?: boolean;            // true = proceed to next agent, false = stop pipeline
+  violation?: string;           // why the activity was blocked
+  violatedPolicy?: string;      // policy ID that was violated
+  escalationId?: string;        // tracking ID for manual override
 }

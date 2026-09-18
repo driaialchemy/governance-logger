@@ -1,7 +1,7 @@
 // GovernanceLogger.ts - Main logger class
 
 import axios, { AxiosInstance } from 'axios';
-import { GovernanceActivity, LoggerConfig, LoggerResponse, ActivityType } from './types';
+import { GovernanceActivity, LoggerConfig, LoggerResponse, ActivityType, buildWebhookPayload } from './types';
 import { getConfig, validateConfig, logDebug } from './config';
 import { retryWithBackoff } from './retry';
 import { ActivityQueue } from './batch';
@@ -73,21 +73,28 @@ export class GovernanceLogger {
     activity: GovernanceActivity
   ): Promise<LoggerResponse> {
     const attempt = this.config.retryAttempts;
+    const payload = buildWebhookPayload(activity);
 
     return retryWithBackoff(
       async () => {
         const response = await this.client.post(
           `/agents/${agentId}/activity`,
-          activity
+          payload
         );
 
         logDebug('Activity logged successfully', { agentId, id: response.data.data?.id });
 
+        const governorResponse = response.data;
+
         return {
           success: true,
-          data: response.data,
+          data: governorResponse.data,
           timestamp: new Date().toISOString(),
           attempt,
+          allowed: governorResponse.allowed ?? true,
+          violation: governorResponse.violation,
+          violatedPolicy: governorResponse.violatedPolicy,
+          escalationId: governorResponse.escalationId,
         };
       },
       this.config.retryAttempts,
@@ -99,6 +106,8 @@ export class GovernanceLogger {
         error: error.message,
         timestamp: new Date().toISOString(),
         attempt,
+        allowed: false,
+        violation: `Failed to get governance approval: ${error.message}`,
       };
     });
   }
@@ -121,11 +130,13 @@ export class GovernanceLogger {
   async logSuccess(
     agentId: string,
     description: string,
-    output?: any
+    output?: any,
+    confidence?: number | null
   ): Promise<LoggerResponse> {
     return this.log(agentId, {
       description,
       result: { success: true, output },
+      confidence: confidence ?? null,
     });
   }
 

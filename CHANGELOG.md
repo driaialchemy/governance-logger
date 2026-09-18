@@ -1,0 +1,3 @@
+- `logSuccess` now accepts optional `confidence` and includes it on the activity POST (null if omitted).
+- P1: webhook payload and retries now carry optional reasoning_path, policy_matched, and confidence (default null).
+- Canonical decision-lineage schema documented; policy_matched type aligned to nullable string (consumer object shape flagged, not coerced).

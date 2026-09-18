@@ -53,7 +53,7 @@ describe('GovernanceLogger', () => {
       });
 
       mockPost.mockResolvedValue({
-        data: { success: true, data: { id: 'activity-123' } }
+        data: { success: true, allowed: true }
       });
 
       const response = await logger.log('test-agent', {
@@ -121,6 +121,7 @@ describe('GovernanceLogger', () => {
       });
 
       expect(response.success).toBe(false);
+      expect(response.allowed).toBe(false);
       expect(response.error).toBeDefined();
     });
 
@@ -154,6 +155,35 @@ describe('GovernanceLogger', () => {
 
       expect(mockPost).toHaveBeenCalledTimes(3);
       expect(response.success).toBe(true);
+      const posted = mockPost.mock.calls[0][1];
+      expect(posted).toHaveProperty('reasoning_path', null);
+      expect(posted).toHaveProperty('policy_matched', null);
+      expect(posted).toHaveProperty('confidence', null);
+    });
+
+    test('retry payload preserves decision lineage fields', async () => {
+      const logger = GovernanceLogger.getInstance({
+        governorUrl: 'http://localhost:3000',
+        retryAttempts: 2,
+        retryDelay: 10
+      });
+
+      mockPost
+        .mockRejectedValueOnce(new Error('Fail 1'))
+        .mockResolvedValueOnce({ data: { success: true } });
+
+      await logger.log('test-agent', {
+        description: 'Lineage',
+        reasoning_path: ['step-a', 'step-b'],
+        policy_matched: 'pol-1',
+        confidence: 0.8
+      });
+
+      expect(mockPost).toHaveBeenCalledTimes(2);
+      expect(mockPost.mock.calls[0][1]).toEqual(mockPost.mock.calls[1][1]);
+      expect(mockPost.mock.calls[0][1].reasoning_path).toEqual(['step-a', 'step-b']);
+      expect(mockPost.mock.calls[0][1].policy_matched).toBe('pol-1');
+      expect(mockPost.mock.calls[0][1].confidence).toBe(0.8);
     });
   });
 
@@ -174,6 +204,41 @@ describe('GovernanceLogger', () => {
       await logger.flush();
 
       expect(mockPost).toHaveBeenCalled();
+    });
+  });
+
+  describe('Blocking Harness', () => {
+    test('returns allowed from governor response', async () => {
+      const logger = GovernanceLogger.getInstance({
+        governorUrl: 'http://localhost:3000'
+      });
+
+      mockPost.mockResolvedValue({
+        data: { success: true, allowed: true, data: { id: 'activity-123' } }
+      });
+
+      const response = await logger.logSuccess('test-agent', 'Success', { data: 42 });
+      expect(response.allowed).toBe(true);
+    });
+
+    test('returns blocked when governor denies', async () => {
+      const logger = GovernanceLogger.getInstance({
+        governorUrl: 'http://localhost:3000'
+      });
+
+      mockPost.mockResolvedValue({
+        data: {
+          success: true,
+          allowed: false,
+          violation: 'Restricted file',
+          escalationId: 'esc-123'
+        }
+      });
+
+      const response = await logger.logSuccess('test-agent', 'Blocked step', {});
+      expect(response.allowed).toBe(false);
+      expect(response.violation).toBe('Restricted file');
+      expect(response.escalationId).toBe('esc-123');
     });
   });
 });
